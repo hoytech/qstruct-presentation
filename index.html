@@ -1,0 +1,351 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" 
+	"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+<title>Qstruct</title>
+<!-- metadata -->
+<meta http-equiv="Content-Type" content="text/html;charset=UTF-8">
+<meta name="generator" content="S5" />
+<meta name="version" content="S5 1.1" />
+<!-- configuration parameters -->
+<meta name="defaultView" content="slideshow" />
+<meta name="controlVis" content="hidden" />
+<!-- style sheet links -->
+<link rel="stylesheet" href="ui/default/slides.css" type="text/css" media="projection" id="slideProj" />
+<link rel="stylesheet" href="ui/default/outline.css" type="text/css" media="screen" id="outlineStyle" />
+<link rel="stylesheet" href="ui/default/print.css" type="text/css" media="print" id="slidePrint" />
+<link rel="stylesheet" href="ui/default/opera.css" type="text/css" media="projection" id="operaFix" />
+<!-- S5 JS -->
+<script src="ui/default/slides.js" type="text/javascript"></script>
+
+
+</head>
+<body>
+
+<div class="layout">
+<div id="controls"><!-- DO NOT EDIT --></div>
+<div id="currentSlide"><!-- DO NOT EDIT --></div>
+<div id="header"></div>
+<div id="footer">
+<h1>Qstruct</h1>
+</div>
+
+</div>
+
+
+<div class="presentation">
+
+<div class="slide">
+  <center>
+  <h1 style="font-size: 300%">Qstruct</h1>
+  <br>
+  <h2>Doug Hoyte</h2>
+  </center>
+</div>
+
+
+
+<div class="slide">
+  <h1>Binary Serialisation Scheme</h1>
+  <ul>
+    <li>Qstruct is a format for the transmission or storage of data</li>
+    <li>Data is encoded in binary (may contain NUL bytes)</li>
+    <li>Reading or writing requires a schema</li>
+    <li>Laid out similar to a C struct</li>
+  </ul>
+</div>
+
+<div class="slide">
+  <h1>Alternatives</h1>
+  There are many similar formats, all have their strengths and weaknesses:
+  <ul>
+    <li>C structs</li>
+    <li>ASN.1</li>
+    <li>Protocol Buffers</li>
+    <li>SBE</li>
+    <li>Blink "Native Binary"</li>
+    <li>Cap'n Proto</li>
+  </ul>
+</div>
+
+<div class="slide">
+  <h1>Design objectives of Qstruct</h1>
+  <ul>
+    <li>Simple</li>
+    <li>Portable</li>
+    <li>Extensible</li>
+    <li>Safe</li>
+    <li>Efficient</li>
+    <li>Good dynamic as well as compiled support</li>
+  <ul>
+</div>
+
+
+<div class="slide">
+  <h1>Design anti-objectives of Qstruct</h1>
+  <ul>
+    <li>Not designed to be space-efficient: Memory/network bandwidth and disk capacity is improving much faster than CPU speed (that said, qstruct messages are highly compressible)</li>
+    <li>Not designed to be the ultimate be-all serialisation format: just one more tool for certain use-cases</li>
+  </ul>
+</div>
+
+<div class="slide">
+  <h1>Schema/Perl Usage</h1>
+<table style="font-size: 80%"><tr><td valign=top>
+<b>Schema:</b>
+  <pre>
+    qstruct Account {
+      id @0 uint64;
+      balance @1 double;
+    }
+
+    qstruct User {
+      id @0 uint64;
+      username @1 string;
+      email @3 string;
+      accounts @2 Account[];
+    }
+  </pre>
+
+</td><td valign=top>
+<b>Perl usage:</b>
+  <pre>
+my $msg = User->encode({
+            id => 389,
+            username => 'jimmy',
+            email => 'jimmy@example.com',
+            accounts => [
+              { id => 811, balance => 23.3 },
+              { id => 131, balance => -900 },
+            ]
+          });
+
+my $user = User->decode($msg);
+
+say "User id is " . $user->id;
+
+foreach (@{ $user->accounts }) {
+  $balance += $_->balance;
+}
+  </pre>
+</td></tr></table>
+</div>
+
+
+<div class="slide">
+  <h1>Primitive Types</h1>
+  <ul>
+    <li>Integers: u?int{8,16,32,64}</li>
+    <li>Floating point: float/double</li>
+    <li>Boolean: A single bit</li>
+    <li>String: Arbitrary sequence of bytes</li>
+    <li>Blob: Same as string but 8-byte word-aligned</li>
+  </ul>
+</div>
+
+
+<div class="slide">
+  <h1>Arrays</h1>
+  <ul>
+    <li>Fixed-size in body:
+      <pre>sha1_checksum @0 uint8[32];</pre>
+    </li>
+    <li>Dynamic-size:
+      <pre>emails @1 string[];</pre>
+    </li>
+    <li>Arrays of qstructs:
+      <pre>addrs @2 Address[];</pre>
+    </li>
+  </ul>
+</div>
+
+
+
+<div class="slide">
+  <h1>Example message: Header and Body</h1>
+
+  <pre>
+my $msg = User->build->name("hello world!")->id(100)
+                     ->is_admin(1)->is_locked(1)
+                     ->encode;
+  </pre>
+
+  <pre style="font-size: 70%">
+    00000000  00 00 00 00 00 00 00 00  20 00 00 00 01 00 00 00  |........ .......|
+              |---------------------header-------------------|
+
+    00000010  64 00 00 00 00 00 00 00  03 00 00 00 00 00 00 00  |d...............|
+              |--------id (@0)------|  || |----free space----|
+                                       ||
+                                       |->is_admin|is_locked (@1|@3)
+
+    00000020  0c 68 65 6c 6c 6f 20 77  6f 72 6c 64 21 00 00 00  |.hello world!...|
+              || |--------inline string data--------| |--pad-|
+              ||
+              |-> name (@2) tag byte indicating length of inline string
+  </pre>
+</div>
+
+
+
+
+<div class="slide">
+  <h1>The Heap</h1>
+
+  If a string is to large to fit in a tagged-size, it must be stored on the heap (same for blobs/dynamic-size arrays):
+
+  <pre style="font-size: 70%">
+    HDR:  00000000  00 00 00 00 00 00 00 00  20 00 00 00 01 00 00 00  |........ .......|
+    CONT: 00000010  64 00 00 00 00 00 00 00  03 00 00 00 00 00 00 00  |d...............|
+    CONT: 00000020  00 18 00 00 00 00 00 00  30 00 00 00 00 00 00 00  |........0.......|
+                    |-------size << 8-----|  |----start offset-----|
+    HEAP: 00000030  74 6f 6f 20 6c 6f 6e 67  20 66 6f 72 20 74 61 67  |too long for tag|
+    HEAP: 00000040  67 65 64 20 73 69 7a 65                           |ged size|
+  </pre>
+</div>
+
+
+<div class="slide">
+  <h1>Ragel</h1>
+  <ul>
+    <li>Ragel is a really cool parser generator</li>
+    <li>Turns Qstruct schema into a data-structure used by dynamic and compiled implementations</li>
+    <li>Code-walkthrough: parser.rl</li>
+  </ul>
+</div>
+
+
+
+<div class="slide">
+  <h1>Zero-Copy</h1>
+
+  The following is perfectly acceptable but due to how perl's return-value semantics work the field data is copied:
+
+  <pre>
+my $jpg = $user->profile_image;
+  </pre>
+
+  With "decoded" qstruct objects there is an alternative <b>zero-copy</b> accessor:
+
+  <pre>
+$user->profile_image(my $jpg);
+  </pre>
+
+  Especially with larger data, copying is bad because it takes time and it puts often needless pressure on your memory system especially if you are only interested in a portion of the data. Example: the profile image is interlaced/progressive.
+</div>
+
+
+<div class="slide">
+  <h1>Qstruct::ArrayRef</h1>
+
+  When you extract an array from a qstruct, it actually returns a magic <b>Qstruct::ArrayRef</b> object. It acts like an array but is often more efficient. For example, this is <b>lazy</b> because it only accesses the first element:
+  <pre>
+    say "First acct id: " . $user->accounts->[0]->id;
+  </pre>
+
+And even though this loop accesses each element, it avoids copying unnecessary data out of each one:
+  <pre>
+    foreach my $p (@{ $user->profiles }) {
+      push @profiles, $p->id; ## Not touching $p->image_data
+    }
+  </pre>
+</div>
+
+
+<div class="slide">
+  <h1>Zero-Copy Arrays</h1>
+
+  Just as field accessors have zero-copy versions, so do array references:
+  <pre>
+    $user->emails->get(0, my $first_email);
+  </pre>
+
+  And zero-copy iteration:
+  <pre>
+    $user->emails->foreach(sub {
+      say "Email: ", $_[0];
+    });
+  </pre>
+</div>
+
+
+<div class="slide">
+  <h1>Perl Implementation</h1>
+
+  <ul>
+    <li>Ragel parser is fast and precise</li>
+    <li>
+      For each package method, we installs closures that close over offsets so are more code-size efficient than traditional code generators
+      <ul>
+        <li>For protobufs, some C++ apps have 100s of megabytes of accessors</li>
+        <li>Google::ProtoBufs also compiles massive perl modules that take a while for perl to compile</li>
+      </ul>
+    </li>
+    <li>Code walk-through: Qstruct.pm</li>
+  </ul>
+</div>
+
+
+<div class="slide">
+  <h1>Qstruct::Compiler</h1>
+
+  Takes heavy advantage of inline C routines.
+  <pre style="font-size: 70%">
+static QSTRUCT_INLINE int qstruct_get_uint64(char *buf, size_t buf_size,
+                                             uint32_t body_index, uint32_t byte_offset,
+                                             uint64_t *output) {
+  QSTRUCT_GETTER_PREAMBLE(8)
+
+  if (exceeds_bounds) {
+    *output = 0; // default value
+  } else {
+    QSTRUCT_LOAD_8BYTE_LE(buf + actual_offset, output);
+  }
+
+  return 0;
+}
+  </pre>
+
+  And used like so:
+  <pre>
+ret = qstruct_get_uint64(buf, buf_size, 0, 24, &my_uint64);
+  </pre>
+
+  Many opportunities for constant-folding.
+</div>
+
+
+
+<div class="slide">
+  <h1>Testing</h1>
+
+  <ul>
+    <li>Schema tests: Verifies corner-cases of schema parsing</li>
+    <li>Portability: Embeds encoded qstruct messages, makes sure they decode OK on your machine</li>
+    <li>Round-trip: Encodes and decodes random-data using random-schemas, ensures it round-tripped OK (runs over-night before releases)</li>
+    <li>Fuzzer: Introduces random bit errors and other odd mutations into schema, make sure decoder never crashes (also runs over-night)</li>
+    <li>Demonstration: All tests are run with -fsanitize=address in effect</li>
+  </ul>
+</div>
+
+
+
+<div class="slide">
+  <h1>Conclusion</h1>
+
+  <ul>
+    <li>Qstructs are a simple and extensible binary serialisation format</li>
+    <li>They are efficient because fields are at fixed offsets which lets us be lazy and zero-copy</li>
+    <li>Dynamic reference-implementation is in perl: Loads schemas very quickly, small compiled code, smart/convenient accessors</li>
+    <li>Compiled implementation: Makes C header files consisting of static inline accessors</li>
+  </ul>
+
+  <center style="font-size: 150%"><b>Questions?</b></center>
+</div>
+
+
+</div>
+</body>
+</html>
