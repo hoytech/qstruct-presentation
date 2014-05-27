@@ -1,0 +1,13 @@
+=encoding utf-8
+
+=head1 NAME
+
+qstruct-presentation - Presentation about Qstructs
+
+=head1 VIEW
+
+http://hoytech.github.io/qstruct-presentation
+
+=head1 SOURCE
+
+https://github.com/hoytech/qstruct-presentation/tree/gh-pages
