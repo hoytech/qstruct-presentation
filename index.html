@@ -313,7 +313,37 @@ static QSTRUCT_INLINE int qstruct_get_uint64(char *buf, size_t buf_size,
 ret = qstruct_get_uint64(buf, buf_size, 0, 24, &my_uint64);
   </pre>
 
-  Many opportunities for constant-folding.
+  <b>Many opportunities for constant-folding.</b>
+</div>
+
+
+<div class="slide">
+  <h1>A compiled accessor</h1>
+
+  <pre style="font-size: 60%">
+   <span style="color:blue">0x0000000000400590 <+0>:     cmp    $0xf,%rsi
+   0x0000000000400594 <+4>:     jbe    0x4005b1
+   0x0000000000400596 <+6>:     mov    0xc(%rdi),%ecx
+   0x0000000000400599 <+9>:     mov    0x8(%rdi),%edx
+   0x000000000040059c <+12>:    test   %ecx,%ecx
+   0x000000000040059e <+14>:    je     0x4005b1
+   0x00000000004005a0 <+16>:    xor    %eax,%eax
+   0x00000000004005a2 <+18>:    cmp    $0x1f,%edx
+   0x00000000004005a5 <+21>:    jbe    0x4005b1
+   0x00000000004005a7 <+23>:    cmp    $0x17,%rsi
+   0x00000000004005ab <+27>:    jbe    0x4005b1</span>
+   <span style="color:red">0x00000000004005ad <+29>:    mov    0x28(%rdi),%rax</span>
+   0x00000000004005b1 <+33>:    repz retq
+  </pre>
+
+  <span style="color:blue">QSTRUCT_GETTER_PREAMBLE</span>: Bounds checking &mdash; I'm planning on optimising this. Also, if you access many values, you only need to do bounds checking once.
+
+  <br><br>
+
+  <span style="color:red">QSTRUCT_LOAD_8BYTE_LE</span>: The actual value loading is one instruction: 0x28 == 16 (header) + 24 (field offset)
+
+  <div>
+  </div>
 </div>
 
 
