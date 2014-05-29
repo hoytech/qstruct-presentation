@@ -50,7 +50,7 @@
 <div class="slide">
   <h1>Binary Serialisation Scheme</h1>
   <ul>
-    <li>Qstruct is a format for the transmission or storage of data</li>
+    <li>Qstruct is a format for the transmission and storage of data</li>
     <li>Data is encoded in binary (may contain NUL bytes)</li>
     <li>Reading or writing requires a schema</li>
     <li>Laid out similar to a C struct</li>
@@ -59,26 +59,25 @@
 
 <div class="slide">
   <h1>Alternatives</h1>
-  There are many similar formats, all have their strengths and weaknesses:
+  There are many other similar formats, all have their strengths and weaknesses:
   <ul>
     <li>C structs</li>
     <li>ASN.1</li>
     <li>Protocol Buffers</li>
-    <li>SBE</li>
+    <li>"Simple Binary Encoding" for FIX</li>
     <li>Blink "Native Binary"</li>
-    <li>Cap'n Proto</li>
+    <li><b>Cap'n Proto</b></li>
   </ul>
 </div>
 
 <div class="slide">
   <h1>Design objectives of Qstruct</h1>
   <ul>
-    <li>Simple</li>
-    <li>Portable</li>
-    <li>Extensible</li>
-    <li>Safe</li>
-    <li>Efficient</li>
-    <li>Good dynamic as well as compiled support</li>
+    <li>Simple design</li>
+    <li>Extensible schemas</li>
+    <li>Portable between CPU and language</li>
+    <li>Safe to load potentially malicious messages</li>
+    <li>Efficient for both compiled and dynamic implementations</li>
   <ul>
 </div>
 
@@ -90,6 +89,22 @@
     <li>Not designed to be the ultimate be-all serialisation format: just one more tool for certain use-cases</li>
   </ul>
 </div>
+
+
+
+<div class="slide">
+  <h1>Primitive Types</h1>
+  <ul>
+    <li>Integers: u?int{8,16,32,64}</li>
+    <li>Floating point: float/double</li>
+    <li>Boolean: A single bit</li>
+    <li>String: Arbitrary sequence of bytes</li>
+    <li>Blob: Same as string but 8-byte word-aligned</li>
+  </ul>
+</div>
+
+
+
 
 <div class="slide">
   <h1>Schema/Perl Usage</h1>
@@ -134,32 +149,15 @@ foreach (@{ $user->accounts }) {
 </div>
 
 
-<div class="slide">
-  <h1>Primitive Types</h1>
-  <ul>
-    <li>Integers: u?int{8,16,32,64}</li>
-    <li>Floating point: float/double</li>
-    <li>Boolean: A single bit</li>
-    <li>String: Arbitrary sequence of bytes</li>
-    <li>Blob: Same as string but 8-byte word-aligned</li>
-  </ul>
-</div>
 
 
 <div class="slide">
-  <h1>Arrays</h1>
-  <ul>
-    <li>Fixed-size in body:
-      <pre>sha1_checksum @0 uint8[32];</pre>
-    </li>
-    <li>Dynamic-size:
-      <pre>emails @1 string[];</pre>
-    </li>
-    <li>Arrays of qstructs:
-      <pre>addrs @2 Address[];</pre>
-    </li>
-  </ul>
+  <h1>Message Layout</h1>
+  <center>
+  <img width="70%" height="70%" src="img/layout.svg">
+  </center>
 </div>
+
 
 
 
@@ -167,9 +165,8 @@ foreach (@{ $user->accounts }) {
   <h1>Example message: Header and Body</h1>
 
   <pre>
-my $msg = User->build->name("hello world!")->id(100)
-                     ->is_admin(1)->is_locked(1)
-                     ->encode;
+my $msg = User->encode({ name => "hello world!", id => 100,
+                         is_admin => 1, is_locked => 1, });
   </pre>
 
   <pre style="font-size: 70%">
@@ -191,10 +188,13 @@ my $msg = User->build->name("hello world!")->id(100)
 
 
 
+
+
+
 <div class="slide">
   <h1>The Heap</h1>
 
-  If a string is to large to fit in a tagged-size, it must be stored on the heap (same for blobs/dynamic-size arrays):
+  If a string is too large to fit in a tagged-size, it must be stored on the heap (same for blobs/dynamic-size arrays):
 
   <pre style="font-size: 70%">
     HDR:  00000000  00 00 00 00 00 00 00 00  20 00 00 00 01 00 00 00  |........ .......|
@@ -207,6 +207,24 @@ my $msg = User->build->name("hello world!")->id(100)
 </div>
 
 
+
+<div class="slide">
+  <h1>Arrays</h1>
+  <ul>
+    <li>Fixed-size (allocated inline in body):
+      <pre>sha1_checksum @0 uint8[32];</pre>
+    </li>
+    <li>Dynamic-size (allocated on the heap):
+      <pre>emails @1 string[];</pre>
+    </li>
+    <li>Arrays of qstructs:
+      <pre>addrs @2 Address[];</pre>
+    </li>
+  </ul>
+</div>
+
+
+
 <div class="slide">
   <h1>Ragel</h1>
   <ul>
@@ -214,6 +232,17 @@ my $msg = User->build->name("hello world!")->id(100)
     <li>Turns Qstruct schema into a data-structure used by dynamic and compiled implementations</li>
     <li>Code-walkthrough: parser.rl</li>
   </ul>
+  <br>
+  <pre>
+      qstruct User {
+        id @0 uint64;
+        active @4 bool;
+        name @2 string;
+        email_addrs @3 string[]; # dynamic array (pointer-based)
+        sha256_checksum @1 uint8[32]; # fixed array (inlined in body)
+        accounts @5 Account[]; # array of nested Account qstructs
+      }
+  </pre>
 </div>
 
 
@@ -221,13 +250,13 @@ my $msg = User->build->name("hello world!")->id(100)
 <div class="slide">
   <h1>Zero-Copy</h1>
 
-  The following is perfectly acceptable but due to how perl's return-value semantics work the field data is copied:
+  Due to perl's return-value semantics, this copies the field data:
 
   <pre>
 my $jpg = $user->profile_image;
   </pre>
 
-  With "decoded" qstruct objects there is an alternative <b>zero-copy</b> accessor:
+  With "decoded" qstruct objects there is an alternative <i>zero-copy</i> accessor:
 
   <pre>
 $user->profile_image(my $jpg);
@@ -240,7 +269,7 @@ $user->profile_image(my $jpg);
 <div class="slide">
   <h1>Qstruct::ArrayRef</h1>
 
-  When you extract an array from a qstruct, it actually returns a magic <b>Qstruct::ArrayRef</b> object. It acts like an array but is often more efficient. For example, this is <b>lazy</b> because it only accesses the first element:
+  When you extract an array from a qstruct, it actually returns a magic <b>Qstruct::ArrayRef</b>. This acts like an array but is often more efficient. For example, this is <i>lazy</i> because it only accesses the first element:
   <pre>
     say "First acct id: " . $user->accounts->[0]->id;
   </pre>
@@ -275,7 +304,6 @@ And even though this loop accesses each element, it avoids copying unnecessary d
   <h1>Perl Implementation</h1>
 
   <ul>
-    <li>Ragel parser is fast and precise</li>
     <li>
       For each package method, we installs closures that close over offsets so are more code-size efficient than traditional code generators
       <ul>
@@ -290,8 +318,18 @@ And even though this loop accesses each element, it avoids copying unnecessary d
 
 <div class="slide">
   <h1>Qstruct::Compiler</h1>
+  <ul>
+    <li>Converts a schema to a C header file of inline static functions</li>
+    <li>Relies on constant-folding so routines are as efficient as possible in both dynamic and compiled contexts</li>
+    <li>The qstruct format is specifically designed to be efficient to access with x86-64 processors, especially recent intel ones which don't penalise non-aligned memory access</li>
+    <li>This module is a work in progress</li>
+  </ul>
+</div>
 
-  Takes heavy advantage of inline C routines.
+
+<div class="slide">
+  <h1>An example accessor</h1>
+
   <pre style="font-size: 70%">
 static QSTRUCT_INLINE int qstruct_get_uint64(char *buf, size_t buf_size,
                                              uint32_t body_index, uint32_t byte_offset,
@@ -308,12 +346,11 @@ static QSTRUCT_INLINE int qstruct_get_uint64(char *buf, size_t buf_size,
 }
   </pre>
 
-  And used like so:
+  And used like so (64-bit unsigned int, 0th body, 24 byte offset):
   <pre>
-ret = qstruct_get_uint64(buf, buf_size, 0, 24, &my_uint64);
+int ret = qstruct_get_uint64(buf, buf_size, 0, 24, &my_uint64);
   </pre>
 
-  <b>Many opportunities for constant-folding.</b>
 </div>
 
 
@@ -336,11 +373,11 @@ ret = qstruct_get_uint64(buf, buf_size, 0, 24, &my_uint64);
    0x00000000004005b1 <+33>:    repz retq
   </pre>
 
-  <span style="color:blue">QSTRUCT_GETTER_PREAMBLE</span>: Bounds checking &mdash; I'm planning on optimising this. Also, if you access many values, you only need to do bounds checking once.
+  <span style="color:blue">QSTRUCT_GETTER_PREAMBLE</span>: Bounds checking and default values &mdash; I'm planning on optimising this. Also, if you access many values, you will only need to do preamble once.
 
   <br><br>
 
-  <span style="color:red">QSTRUCT_LOAD_8BYTE_LE</span>: The actual value loading is one instruction: 0x28 == 16 (header) + 24 (field offset)
+  <span style="color:red">QSTRUCT_LOAD_8BYTE_LE</span>: The actual value loading is one instruction:<br> 0x28 == 40 == 16 (header) + 24 (field offset)
 
   <div>
   </div>
@@ -371,6 +408,8 @@ ret = qstruct_get_uint64(buf, buf_size, 0, 24, &my_uint64);
     <li>Dynamic reference-implementation is in perl: Loads schemas very quickly, small compiled code, smart/convenient accessors</li>
     <li>Compiled implementation: Makes C header files consisting of static inline accessors</li>
   </ul>
+
+  <br><br>
 
   <center style="font-size: 150%"><b>Questions?</b></center>
 </div>
