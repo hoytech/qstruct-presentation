@@ -50,10 +50,11 @@
 <div class="slide">
   <h1>Binary Serialisation Scheme</h1>
   <ul>
-    <li>Qstruct is a format for the transmission and storage of data</li>
+    <li>Qstruct is a format for the transmission and storage of structured data</li>
     <li>Data is encoded in binary (may contain NUL bytes)</li>
     <li>Reading or writing requires a schema</li>
     <li>Laid out similar to a C struct</li>
+    <li>The "in-memory" format is the same as the "wire" format</li>
   </ul>
 </div>
 
@@ -234,6 +235,7 @@ my $msg = User->encode({ name => "hello world!", id => 100,
   </ul>
   <br>
   <pre>
+      /* Here is the format we are parsing: */
       qstruct User {
         id @0 uint64;
         active @4 bool;
@@ -263,6 +265,10 @@ $user->profile_image(my $jpg);
   </pre>
 
   Especially with larger data, copying is bad because it takes time and it puts often needless pressure on your memory system especially if you are only interested in a portion of the data. Example: the profile image is interlaced/progressive.
+
+  <p>
+    Perl 5.20 adds copy-on-write string copies/slices which can accomplish roughly the same thing
+  </p>
 </div>
 
 
