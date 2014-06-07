@@ -4,6 +4,10 @@
 
 qstruct-presentation - Presentation about Qstructs
 
+=head1 LIVE
+
+https://www.youtube.com/watch?v=cOYx8te1-m0
+
 =head1 VIEW
 
 http://hoytech.github.io/qstruct-presentation
